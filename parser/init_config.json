@@ -1,0 +1,22 @@
+{
+    "Event_IDS": {
+        "120": "SoundSetting",
+        "51": "GiveReward_Int",
+        "52": "GiveReward",
+        "61": "SMStarted",
+        "62": "SMFinished",
+        "63": "SMData",
+        "71": "TPStarted",
+        "72": "TPEnded",
+        "80": "TwoTapTarget",
+        "81": "TwoTapData",
+        "82": "TwoTapUpper",
+        "83": "TwoTapLower",
+        "97": "SerialHeartbeat",
+        "98": "SavingEnded",
+        "99": "SavingStarted"
+    },
+    "State_IDS": {
+    },
+    "Parsed_Files": []
+}

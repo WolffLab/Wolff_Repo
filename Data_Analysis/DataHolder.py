@@ -7,7 +7,7 @@ class DataHolder:
     """ Class for holding the rat press data files """
 
 
-    def __init__(self, presses = "get", sessions = "get", dropafter = 0, dropfirst = 0, h5 = None):
+    def __init__(self, presses = "get", sessions = "get", dropafter = 0, dropfirst = 0, h5 = None, clean = True):
         """ Initialization takes two csv files, one with press informaion and one with session information. 
         A single dataframe is created that stores all the information about each press.
         If there is a drop after argument, all of the sessions after that number will be dropped 
@@ -23,8 +23,10 @@ class DataHolder:
             defaults to 0, this won't drop anything.
         dropfirst : int, optional
             drop this number of trials from the beginning of the dataframe
-        h5 : str
+        h5 : str, optional
             the path to an h5 file created by the parser class, if this value is included then presses and sessions are ignored.
+        clean : bool, optional
+            Wether to remove trials without a second tap, defaults to true.
 
         Returns
         -------
@@ -59,6 +61,9 @@ class DataHolder:
 
         # drop beginning trials if nececary 
         self.df = self.df.copy().iloc[dropfirst:,:]
+
+        if clean:
+            self.clean()
 
 
     def __getitem__(self, key):
@@ -204,7 +209,12 @@ class DataHolder:
     def sess_cols(self):
         """Return a list of columns that pertain to session values."""
         return [i for i in self.columns if i in ['target','upper','lower','next_target','prev_target','n_sess']]
-        
+
+    def clean(self):
+        """Removes all trials where there is no tap 2 recorded."""
+        self.df = self.df.loc[self.df['tap_2_len']!=0]
+        self.df.index = range(len(self.df))
+
     def get_by_target(self, target, col = slice(None)):
         """ Returns all of the presses that have a particular target. 
     
@@ -424,8 +434,8 @@ class DataHolder:
 
         return statcol
 
-    def TrialSuccess(self, error, avgwindow = 100):
-        """ Returns an array with the number of successes in each session where the trial IPI was 
+    def TrialSuccess(self, error, avgwindow = 100, target = None):
+        """ Returns an array with the percentage of trials within a moving window where the trial IPI was 
         +- error % away from the target IPI. 
         
         Parameters 
@@ -434,19 +444,23 @@ class DataHolder:
             The numerical value of the percentage bounds from target desired. 
         avgwindow : int
             The number of sessions that should be used to calculate the moving average. 
-            Default is a window of 5 
+            Default is a window of 100
+        target : int, optional
+            include this if you want to only take values from a particular target IPI
         
         Returns 
         ------
-        successes : np.array
-            Contains the number of succcesses for each session
         avg : np.array
-            Contains the moving average of the successes per session
+            Contains the moving average of the successes
 
         """
  
-        # grab the percentage error for each trial 
-        loss = (self.df['loss']).to_numpy()
+        # grab the percentage error for each trial
+        if isinstance(target,type(None)):
+            loss = (self.df['loss']).to_numpy()
+        else:
+            loss = self.get_by_target(target, col = 'loss').to_numpy()
+        
         # define upper and lower bounds
         upper = error/100
         lower = -error/100 
@@ -557,7 +571,7 @@ class DataHolder:
         Returns 
         ------
         successes : np.array
-            Contains the number of succcesses for each session
+            Contains the percentage of succcesses within each session
         avg : np.array
             Contains the moving average of the successes per session
 

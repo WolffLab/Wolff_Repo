@@ -81,59 +81,7 @@ class DataAvgs:
             targetframes.append(dataframes)
             # reset the dataframe for the next target group 
             dataframes = []
-        return targetframes 
-
-
-    def __getitem__(self,key):
-        """ Python Internal. 
-        Indexing method of the class"""
-
-        # Check that the key is an interger 
-        if isinstance(key,int):
-            # if yes, return that number press
-            return self.presses.iloc[key]
-
-        # Check that the key has two items
-        elif isinstance(key,tuple):
-            # key must be formatted as [number, column title]
-            n,col = key
-            # pull the nth press out 
-            row = self.presses.iloc[n]
-
-            # if the column title exists in the press data, 
-            if col in self.presses:
-                # return that column
-                return row[col]
-
-            # if the column title exists in the session data, ex  "target" or "upper" 
-            elif col in self.sessions:
-                # run get sess params function to return the column from session data 
-                return self.get_sess_params(int(row.name[0]))[col]
-        
-        # Check that the key is only a string,
-        elif isinstance(key,str):
-
-            # if the column title exists in the press data, 
-            if key in self.presses.columns:
-                # return all rows from that column 
-                return self.presses[key]
-
-            # if the column title exists in the session data, 
-            elif key in self.sessions:
-                # return all rows from that column 
-                return self.sessions[key]
-            
-            # if the column title is "n_sess" or "n_in_sess".
-            elif key in self.presses.index.names:
-                # return all rows from that column 
-                return self.presses.index.get_level_values(key)
-            
-            else: # if the column title is none of the above, 
-                raise Exception(f"{key} is not valid")
-
-        else: # if the format of the key is none of the above
-            raise Exception(f"{type(key)} is an invalid type")
-    
+        return targetframes
 
     def _preprocessing(self, datalist):
         """ Internal Function. Crop the dataframes to include only specific columns & sort by 

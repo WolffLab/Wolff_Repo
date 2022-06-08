@@ -23,8 +23,8 @@ class DataHolder:
             defaults to 0, this won't drop anything.
         dropfirst : int, optional
             drop this number of trials from the beginning of the dataframe
-        df : pd.Dataframe or None, optional
-            gives the option to skip csvs entirely and use a dataframe directly, if this value is included then presses and sessions are ignored.
+        h5 : str
+            the path to an h5 file created by the parser class, if this value is included then presses and sessions are ignored.
 
         Returns
         -------

@@ -3,17 +3,20 @@
 
 import matplotlib.pyplot as plt 
 import numpy as np 
-import pandas as pd 
+import pandas as pd
 import scipy as sc
 import datetime
 from scipy import stats
-from .DataHolder import DataHolder
-from Wolff_Repo.Utils.simple import ceil
+from Wolff_Repo.Data_Analysis.DataHolder import DataHolder
+from Wolff_Repo.Data_Analysis.DataAvgs import DataAvgs
+from Wolff_Repo.Utils.simple import *
 import math as ma 
 
 
-
 class AveragedRats:
+
+    farben = ['xkcd:slate grey', 'xkcd:deep green', 'xkcd:greyish green', 'xkcd:cool grey', 'xkcd:slate grey', 'xkcd:deep green', 'xkcd:greyish green', 'xkcd:cool grey']
+    colors = ['xkcd:wine red', 'xkcd:grape', 'xkcd:dark lavender', 'xkcd:blueberry', 'xkcd:ocean blue', 'xkcd:turquoise', 'xkcd:light teal', 'xkcd:sage green', 'xkcd:yellow ochre', 'xkcd:pumpkin', 'xkcd:burnt umber']
 
     
     def __init__(self, ratdata, ratname):
@@ -27,12 +30,20 @@ class AveragedRats:
         ratname : string or list
             Name(s) of the rat to be displayed on the plots. 
         """
-                   
-        self.names = ratname
-        self.rat = ratdata
 
-        self.farben = ['xkcd:slate grey', 'xkcd:deep green', 'xkcd:greyish green', 'xkcd:cool grey', 'xkcd:slate grey', 'xkcd:deep green', 'xkcd:greyish green', 'xkcd:cool grey']
-        self.colors = ['xkcd:wine red', 'xkcd:grape', 'xkcd:dark lavender', 'xkcd:blueberry', 'xkcd:ocean blue', 'xkcd:turquoise', 'xkcd:light teal', 'xkcd:sage green', 'xkcd:yellow ochre', 'xkcd:pumpkin', 'xkcd:burnt umber']
+        if isinstance(ratname, str):
+            self.names = [ratname]
+        elif isinstance(ratname, list):
+            self.names = ratname
+        else:
+            raise Exception(f"{type(ratname)} is invalid type for ratname, must be string or list.")
+
+        if isinstance(ratdata, DataAvgs):
+            self.rat = [ratdata]
+        elif isinstance(ratdata, list):
+            self.rat = ratdata
+        else:
+            raise Exception(f"{type(ratdata)} is invalid type for ratdata, must be list or DataAvgs.")
     
     def _xlabel(self, value, tick_number=None):
         if abs(value) < 1000:
@@ -42,26 +53,87 @@ class AveragedRats:
         value = round(value / 1000**num, 2)
         return f'{value:g}'+' KM'[num]
    
+    def Moving_Average(self, data, window = 1001):
+        """Return a moving average over `data`.
+        
+        Parameters
+        ----------
+        data : iterable
+            data to average over
+        
+        window : int, optional
+            size of the moving window, must be an odd number. 
+            Defaults to 1001.
+        
+        Returns
+        -------
+        out : iterable
+            Moving average, will be of the same type as the input iterable.
+            
+        Notes
+        -----
+        The length of the output structure will be the length of the input structure minus the windowsize."""
 
-    def Plot(self, ptype = 'IPI', target = 700, window = 1000, minwindow = 100, error = 10, boxcar = 300, savepath = None, ymin = 0, ymax = False, target2 = 500, norm = False):
-        """ Returns a plot of the average 1st tap length and average IPI for each session. 
+        return func_convolve(data, np.mean, window)
+
+    def Moving_CV(self, data, window = 1001):
+        """Return a moving coefficient of variation over `data`.
+        
+        Parameters
+        ----------
+        data : iterable
+            data to to take cv over
+        
+        window : int, optional
+            size of the moving window, must be an odd number. 
+            Defaults to 1001.
+        
+        Returns
+        -------
+        out : iterable
+            Moving cv, will be of the same type as the input iterable.
+            
+        Notes
+        -----
+        The length of the output structure will be the length of the input structure minus the windowsize."""
+
+        return func_convolve(data, stats.variation, window)
+
+    def Boxcar(self, data, window):
+        """Return a boxcar smoothed iterable.
+        
+        Parameters
+        ----------
+        data : iterable
+            data to perform boxcar on.
+            
+        window : int
+            size of each boxcar
+            
+        Returns
+        -------
+        out : iterable
+            boxcar smoothed data, same dtype as input iterable."""
+
+        return boxcar(data, window)
+
+    def Plot(self, ptype = 'IPI', target = 700, window = None, error = 10, boxcar = None, savepath = None, ylo = 0, yhi = "Default", target2 = 500, norm = True):
+        """ Returns the requested plot with the requested parameters. 
         
         Parameters 
-        ---- 
+        ---------- 
         ptype : str
             REQUIRED
             Name of the plot that you want to make. 
-            allowed strings: "IPI", "Success", "Tap1", "Tap2" 
+            allowed strings: "IPI", "Success", "Tap1", "Tap2"
 
         target : int 
             REQUIRED
             Number value of the target IPI desired 
             Default is 700 
         
-        window : int 
-            REQUIRED
-            Number for the window for moving average calculatons 
-            Default is 1000 
+        window : int or None, Optional
+            size of the moving average window if you want to take a moving average, defaults to None.
 
         minwindow : int 
             REQUIRED
@@ -85,45 +157,63 @@ class AveragedRats:
         
         
         # Graph of Tap1 & IPI vs. trials 
-        if ptype == ("Tap1" or "tap1"):
-            self.Tap_vIPI(1, target, window, minwindow)
+        if ptype.lower() == 'tap1':
+            self.Tap_vIPI(target, window = window)
 
         # Graph of Tap2 & IPI vs. trials 
-        elif ptype == ("Tap2" or "tap2"):
-            self.Tap_vIPI(2, target, window, minwindow) 
+        elif ptype.lower() == 'tap2':
+            self.Tap_vIPI(target = target, tap = 2, window = window)
 
         # Graph of IPI vs. trials 
-        elif ptype == ("IPI" or "interval" or "Interval"):
-            self.IPI(target, window, minwindow, mine = ymin, save = savepath, max = ymax)
+        elif ptype.lower() in ('ipi', 'interval'):
+            self.IPI(target = target, window = window, ylo = ylo, yhi = yhi, save = savepath)
 
-        # Graph of Success vs. trials 
-        elif ptype == ("Success" or "success"):
-            self.Success(target, error, window, minwindow, save = savepath)
+        # Graph of Success vs. trials
+        elif ptype.lower() == 'success':
+            self.Success(target = target, error = error, window = window, save = savepath)
 
-        elif ptype == ("CV" or "cv"):
-            self.CV(target, window, minwindow, boxcar, ymin, savepath)
+        elif ptype.lower() == "cv":
+            self.CV(target = target, window = window, box = boxcar, ylo = ylo, save = savepath)
 
-        elif ptype == ("DeltaIPI" or "deltaIPI" or "Delta IPI"):
-            self.DelIPI(target, target2, window, minwindow, savepath, norm) 
+        elif ptype.lower() in ("deltaipi", "delta ipi", "delipi", "del ipi"):
+            print('plotting del ipi')
+            self.DelIPI(target1 = target, target2 = target2, window = window, save = savepath, norm = norm)
 
 
 
-    def DelIPI(self, target1, target2, win, minwindow, save, norm = False): 
-        """ Plots the change in interval produced for the averaged data. """
-        # check to see if the rats are in a list. If not, that means there is only one rat in the list. 
-        if not isinstance(self.rat, list): 
-            # make the item into a "list" so it can be iterated over the same code. 
-            self.rat = [self.rat] 
+    def DelIPI(self, target1, target2, win = None, save = None, norm = True): 
+        """Plots the difference in average IPIs between two targets among the group of rats. 
+        See `DataAvgs.DelIPI` for more info on data computation.
+        
+        Parameters
+        ----------
+        target1 : int
+            Value of first target
+
+        target2 : int
+            Value of second target
+
+        win : int or None, optional
+            Size of window for moving average if you want one, must be an odd number.
+            Defaults to None.
+
+        save : str, optional
+            A path to save the figure in, defaults to none.
+
+        norm : bool, optional
+            Wether or not to normalize using the difference of the two target IPIs, defaults to True."""
         
         # make a list of numbers to iterate over for the colors. 
-        cols = np.arange(len(self.rat)) 
+        cols = np.arange(len(self.rat))
 
         # define the plotting style
         plt.style.use('default') 
 
         # now that all posibilities of self.rat are lists, 
-        for rat, name, c in zip(self.rat, self.names, cols): 
-            delipi = rat.DeltaIPI(target1, target2, norm, window = win, minwin = minwindow)
+        for rat, name, c in zip(self.rat, self.names, cols):
+            delipi = rat.DelIPI(target1, target2, norm)
+            if not isinstance(win, type(None)):
+                delipi = self.Moving_Average(delipi, win)
             trials = range(len(delipi))
 
             plt.plot(trials, delipi, color = self.colors[c], label = f'{name}')
@@ -140,17 +230,28 @@ class AveragedRats:
         plt.ylabel(r'$\Delta$IPI (ms)') 
         plt.title(r'$\Delta$IPI' + f' between {target1}ms and {target2}ms Trials') 
 
-        if save != None: 
+        if not isinstance(save, type(None)): 
             plt.savefig(save, bbox_extra_artists=(frame,), bbox_inches = 'tight') 
         plt.show() 
 
 
-    def Tap_vIPI(self, tap, target, window, minwindow):
-        """ Here """
-        # check to see if the rats are in a list. If not, that means there is only one rat in the list. 
-        if not isinstance(self.rat, list): 
-            # make the item into a "list" so it can be iterated over the same code. 
-            self.rat = [self.rat] 
+    def Tap_vIPI(self, target, tap = 1, window = None):
+        """Plot of tap length and IPI for a specified target.
+        
+        Parameters
+        ----------
+        tap : 1 or 2, optional
+            Which tap length you want to compare with (first or second tap).
+            Defaults to 1.
+        target : int
+            target IPI
+        window : int or None, Optional
+            Size of moving average window if you want to do a moving average, must be odd.
+            Defaults to None.
+        
+        Returns
+        -------
+        out : plt.plot"""
 
         # define the plotting style 
         plt.style.use('default')
@@ -162,12 +263,11 @@ class AveragedRats:
         for rat, name in zip(self.rat, self.names):
         
             # define the interval 
-            interval = rat.MovingAverage(target, 'interval', win = window, minwin = minwindow)
-            # find the moving average of the tap length
-            if tap == 1:
-                taps = rat.MovingAverage(target, 'tap_1_len', win = window, minwin = minwindow)
-            else:
-                taps = rat.MovingAverage(target, 'tap_2_len', win = window, minwin = minwindow) 
+            interval = rat.averaged_col('interval', target = target)
+            taps = rat.averaged_col(f'tap_{tap}_len', target = target)
+            if not isinstance(window, type(None)):
+                interval = self.Moving_Average(interval, window)
+                taps = self.Moving_Average(taps, window)
             
             # make a list for the trials 
             trials = range(len(interval))
@@ -195,31 +295,33 @@ class AveragedRats:
         plt.show()
 
 
-    def IPI(self, target, window, minwindow, mine = 0, save = None, max = None):
-        """ Returns a plot of the coefficient of variation for all of the rats that you give it 
-
-        Params 
-        --- 
-        ratlist : list of dataframes
-        List of the averaged dataframes that come from DataAvgs
-
+    def IPI(self, target, window = None, ylo = 0, yhi = "Default", save = None):
+        """Plots the IPIs for specific target IPI
+        
+        Parameters
+        ----------
         target : int
-        Number of the target you're looking at
+            Value of target IPI
 
-        window : int
-        The number of sessions that should be used to calculate the moving coefficient of variation. 
-        Default is a window of 100
+        window : int or None, optional
+            Size of window for moving average if you want one, must be an odd number.
+            Defaults to None.
 
-        boxcar : int 
-        The number of sessions that is used to smooth the Coefficient of variation data. 
-        Default is a window of 300
-        """
-
-        # check to see if the rats are in a list. If not, that means there is only one rat in the list. 
-        if not isinstance(self.rat, list): 
-            # make the item into a "list" so it can be iterated over the same code. 
-            self.rat = [self.rat] 
-
+        ylow : int, optional
+            Lower limit on y-axis.
+            Defaults to 0.
+        
+        yhi : int, optional
+            Upper limit on y-axis
+            Defaults to `target` + 100
+        
+        save : str, optional
+            A path to save the figure in, defaults to none.
+        
+        Returns
+        -------
+        out : plt.plot"""
+    
         # So plots show up on a dark background VSCode
         plt.style.use('default')
         fig, ax = plt.subplots()
@@ -228,20 +330,21 @@ class AveragedRats:
         # for each of the rats being plotted, 
         for r in range(len(self.rat)): 
             # find the coefficient of variation for this rat and then plot it. 
-            interval = self.rat[r].MovingAverage(target, "interval", win = window, minwin = minwindow)
-            
+            interval = self.rat[r].averaged_col('interval', target)
+            if not isinstance(window, type(None)):
+                interval = self.Moving_Average(interval, window)
             # define the x axis based on the length of the successes
-            trials = range(interval.shape[0])
+            trials = range(len(interval))
             length.append(trials[-1])
             # plot with a different color for each rat in the ratlist. 
-            ax.plot(trials, interval, color = self.farben[r], label=f'{self.names[r]} group')
+            ax.plot(trials, interval, color = self.farben[r], label=f'{self.names[r]}')
         
         ax.hlines(target, 0, np.max(length), 'xkcd:grey', ":", label = "Target") 
 
-        if max == False:
-            plt.ylim((mine, target+100))
-        if max != False:
-            plt.ylim((mine, max)) 
+        if yhi == 'Default':
+            plt.ylim((ylo, target+100))
+        else:
+            plt.ylim((ylo, yhi)) 
         
         plt.xlabel('Trials', loc = "right")
         # code from stackoverflow for formatting the axis as #'s of k 
@@ -253,40 +356,34 @@ class AveragedRats:
         
         plt.ylabel(f' Interval (miliseconds)')
         plt.title(f'IPI for {target}ms target IPI')
-        if save != None:
+        if not isinstance(save, type(None)):
             fig.savefig(save, bbox_extra_artists=(frame,), bbox_inches = 'tight') 
         plt.show() 
 
 
-    def Success(self, target, error, window, minwindow, save = None): 
-        """ Returns a plot of the coefficient of variation for all of the rats that you give it 
+    def Success(self, target, error, window, save = None): 
+        """Plots the average percentage of trials within a moving window where the trial IPI was 
+        +- error % away from the target IPI. First computes this average for each rat then averages over all rats.
         
-        Params 
-        --- 
-        ratlist : list of dataframes
-            List of the averaged dataframes that come from DataAvgs
-        
+        Parameters
+        ----------
         target : int
-            Number of the target you're looking at
-        
-        window : int
-            The number of sessions that should be used to calculate the moving coefficient of variation. 
-            Default is a window of 100
-        
-        boxcar : int 
-            The number of sessions that is used to smooth the Coefficient of variation data. 
-            Default is a window of 300
-        
-        Returns 
-        --- 
-        plot
-        """
+            Value of target IPI
 
-        # check to see if the rats are in a list. If not, that means there is only one rat in the list. 
-        if not isinstance(self.rat, list): 
-            # make the item into a "list" so it can be iterated over the same code. 
-            self.rat = [self.rat] 
-       
+        error : int or float
+            The percentage within the target ipi that counts as a success.
+
+        window : int
+            Size of moving window.
+        
+        save : str, optional
+            A path to save the figure in, defaults to none.
+        
+        Returns
+        -------
+        out : plt.plot"""
+
+
         # So plots show up on a dark background VSCode
         plt.style.use('default')
         fig, ax = plt.subplots()
@@ -294,7 +391,7 @@ class AveragedRats:
         # for each of the rats being plotted, 
         for r, name in zip(range(len(self.rat)), self.names):
             # find the coefficient of variation for this rat and then plot it. 
-            success = self.rat[r].MovingAverage(target, "Success", win = window, minwin = minwindow, err = error)
+            success = self.rat[r].TrialSuccess(error = error, avgwindow = window, target = target)
             
             # define the x axis based on the length of the successes
             trials = range(success.shape[0])
@@ -315,45 +412,37 @@ class AveragedRats:
         
         plt.ylabel(f'Percent of trials within limit (moving {window} trial window) ')
         plt.title(f'Success Rate within +-{error}% of {target}ms target IPI')
-        if save != None:
+        if not isinstance(save, type(None)):
             fig.savefig(save, bbox_extra_artists=(frame,), bbox_inches = 'tight') 
-        plt.show() 
+        plt.show()
 
 
-    def CV(self, target, window, minwindow, box, mine, save): 
-        """ Returns a plot of the coefficient of variation for all of the rats that you give it 
+    def CV(self, target, window, box = None, ylo = 0, save = None): 
+        """Plots a moving window coefficient of variation over all IPIs for a particular target.
         
-        Params 
-        --- 
-        ratlist : list of dataframes
-            List of the averaged dataframes that come from DataAvgs
-        
+        Parameters
+        ----------
         target : int
-            Number of the target you're looking at
-        
+            Value of target IPI
+
         window : int
-            The number of sessions that should be used to calculate the moving coefficient of variation. 
-            Default is a window of 100
+            Size of window for moving cv, must be an odd number.
 
-        minwindow : int
-            OPTIONAL
-            The number of sessions used to calculate a single average. Ex. minwindow = 20 will 
-            Wait until the 20th row before calculating an average and place NaN in the first 19 rows.
-            Default is a window of 10
-        
-        boxcar : int 
-            The number of sessions that is used to smooth the Coefficient of variation data. 
-            Default is a window of 300
-        
-        Returns 
-        --- 
-        plot
-        """
+        box : int or None, optional
+            Size of boxcar if you want to run a boxcar filter over data.
+            Defaults to None.
 
-       # check to see if the rats are in a list. If not, that means there is only one rat in the list. 
-        if not isinstance(self.rat, list): 
-            # make the item into a "list" so it can be iterated over the same code. 
-            self.rat = [self.rat] 
+        ylo : int, optional
+            Lower limit on y-axis.
+            Defaults to 0.
+        
+        save : str, optional
+            A path to save the figure in, defaults to none.
+        
+        Returns
+        -------
+        out : plt.plot"""
+
         
         plt.style.use('default')
         fig, ax = plt.subplots()
@@ -364,8 +453,10 @@ class AveragedRats:
 
         for r in range(len(self.rat)): 
             # find the coefficient of variation for this rat and then plot it. 
-            cv = self.rat[r].MovingAverage(target, "CV", win = window, minwin = minwindow, boxcar = box)
-            trials = range(cv.shape[0])
+            cv = self.Moving_CV(self.rat[r].averaged_col('interval', target = target), window = window)
+            if not isinstance(box, type(None)):
+                cv = self.Boxcar(cv, box)
+            trials = range(len(cv))
 
             max = np.nanmax(cv)
             height.append(max)
@@ -374,7 +465,7 @@ class AveragedRats:
             ax.plot(trials, cv, color = self.farben[r], label=f'{self.names[r]} group')
 
         ylimit = np.max(height) + 0.02
-        plt.ylim((mine,ylimit))
+        plt.ylim((ylo,ylimit))
         
         plt.xlabel('Trials', loc = "right")
         # code from stackoverflow for formatting the axis as #'s of k 
@@ -386,7 +477,7 @@ class AveragedRats:
 
         plt.ylabel('Coefficient of Variation')
         plt.title(f'Coefficient of Variation for {target}ms target IPI')
-        if save != None:
+        if not isinstance(save, type(None)):
             fig.savefig(save, bbox_extra_artists=(frame,), bbox_inches = 'tight') 
         plt.show()
 

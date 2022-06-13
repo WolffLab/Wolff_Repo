@@ -38,6 +38,19 @@ class DataAvgs:
 
         return pd.concat(group).groupby(level = 0).mean()
  
+    def set_of(self, attr):
+        """Return all possible values of an column.
+        
+        Parameters
+        ----------
+        attr : str
+            Name of the column you wants values from. For example set_of('target') will return all possible values for targets among all the rats in the class."""
+
+        outval = []
+        for holder in self.holderlist:
+            outval = outval + holder.set_of(attr)
+        return set(outval)
+
     def averaged_col(self, col, target = None):
         """Return a column of averaged values from all rats.
         
@@ -77,6 +90,42 @@ class DataAvgs:
         cols = [i.TrialSuccess(error, avgwindow, target) for i in self.holderlist]
 
         return self._average_group(cols)
+
+    def DelIPI(self, target1, target2, norm = True):
+        """Returns the difference in average IPIs between two targets among the group of rats. Length will be cut based on whichever target has the least trials.
+        
+        Parameters
+        ----------
+        target1 : int
+            Value of first target
+        target2 : int
+            Value of second target
+        norm : bool, optional
+            Wether or not to normalize using the difference of the two target IPIs
+        
+        Returns
+        -------
+        out : pd.Series"""
+
+        group1 = self.averaged_col('interval', target = target1)
+        group2 = self.averaged_col('interval', target = target2)
+
+        #length of final series is that of whichever group is smaller
+        outlen = min(len(group1),len(group2))
+
+        #trim series so they are the same length
+        group1 = group1.loc[0:outlen]
+        group2 = group2.loc[0:outlen]
+
+        #get difference
+        out = group2 - group1
+
+        #normalize if necessary
+        if norm:
+            out = out/abs(target2 - target1)
+
+        return out
+
     
 
 

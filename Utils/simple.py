@@ -176,7 +176,7 @@ def func_on_subsets(vals, divsize, func, manage_extras = "auto", xs = None):
     return outlist
 
 #convolve a function over a list you can include a list of x values to get those returned
-def func_convolve(vals,func,divsize,xs = None):
+def func_convolve(vals, func, divsize, xs = None):
     """Convolve a function over a list.
     
     Parameters

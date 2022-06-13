@@ -249,7 +249,7 @@ class DataHolder:
         """
 
         if sort:
-            return np.sort(list(set(self[col])))
+            return np.sort(list(set(self[col]))).tolist()
 
         else: 
             return list(set(self[col]))
@@ -438,13 +438,13 @@ class DataHolder:
         """ Returns an array with the percentage of trials within a moving window where the trial IPI was 
         +- error % away from the target IPI. 
         
-        Parameters 
-        -------
+        Parameters
+        ----------
         error : int
             The numerical value of the percentage bounds from target desired. 
         avgwindow : int
             The number of sessions that should be used to calculate the moving average. 
-            Default is a window of 100
+            Default is a window of 100.
         target : int, optional
             include this if you want to only take values from a particular target IPI
         

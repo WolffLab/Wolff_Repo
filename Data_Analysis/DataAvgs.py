@@ -2,473 +2,82 @@
 from Wolff_Repo.Utils.simple import *
 import pandas as pd
 import scipy as sp
-
+import numpy as np
 
 class DataAvgs:
-    """ Class for inputting multiple rat press data files """
+    """Class used to average the data between several different rats."""
 
-
-    def __init__(self, ratlist):
-        """Initialization stores two dataframes in the class, one with information about specific presses 
-        and one with the general information of each session. 
-
+    def __init__(self, holderlist):
+        """Initializes class.
+        
         Parameters
-        --- 
-        ratlist : list
-            List of DataHolder objects. 
-        Returns
-        --- 
-        None. Creates an object. 
-        """
-
-        datalist = [] 
-        # pull the dataframes from the DataHolder object list
-        for rat in ratlist:
-            frame = rat.df 
-            datalist.append(frame)
-
-        self.ratlist = ratlist 
-
-        # assume that all of the rats have the same list of targets 
-        # just pull the first rat's targets
-        targets = (ratlist[0].set_of('target')).tolist()
-        # sort the targets from largest to smallest so 
-        # they are always pulled in the same order. 
-        (targets).sort(reverse=True) 
-        self.targets = targets
-
-        # do the preprocessing 
-        targetlist = self._preprocessing(datalist)
-
-        # get the list of cutoff values
-        cutofflist = self._find_cutoff_values(targetlist)
-        # make it into a self-referencing variable
-        self.cuts = cutofflist
-
-        # average the rats into a single dataframe per target
-        targetframe = self._averaging(targetlist) 
-        # make it into a self-referencing variable
-        self.targetframe = targetframe 
-
-
-    def _frames_by_target(self, datalist):
-        """ Internal Function. Groups the dataframes by each of the targets contained. 
-        Parameters 
-        --- 
-        datalist : list
-            nested list of dataframes
-        targets : list
-            list of the targets used in the training 
-        
-        Returns 
-        --- 
-        targetlist : list 
-            nested list of dataframes sorted by target 
-        """
-        # make empty lists for the things being seperated by targets
-        targetframes = []
-        dataframes = []
-        # for each target, 
-        for target in self.targets:
-            # for each of the rats, 
-            for frame in datalist:
-                # grab the entries that have a specific target
-                data = frame.loc[frame["target"]==target]
-                data = data.reset_index()
-                # append that data to the dataframe 
-                dataframes.append(data)
-            # append the dataframe for the whole target group to the targetframe 
-            targetframes.append(dataframes)
-            # reset the dataframe for the next target group 
-            dataframes = []
-        return targetframes
-
-    def _preprocessing(self, datalist):
-        """ Internal Function. Crop the dataframes to include only specific columns & sort by 
-        target value.
-        Parameters 
-        --- 
-        datalist : list
-            nested list of dataframes
-        targets : list
-            list of the targets used in the training 
-        
-        Returns 
-        --- 
-        targetlist : list 
-            nested list of dataframes sorted by target 
-        """
-
-        # assume that all of the dataframes have the same targets witin each rat group
-        # Seperate the data by target group 
-        targetframes = self._frames_by_target(datalist)
-        # create blank targetlist for storing the new dataframes and blank dataframes for iterating over 
-        targetlist = []
-        dataframes = []
-        # for each of the target groups, 
-        for target in targetframes:
-            # for each of the dataframes within the target group, 
-            for frame in target:
-                # grab only the columns that we want to average over
-                press = frame.copy()[["interval", "tap_1_len", "tap_2_len", "ratio", "loss", "upper", "lower"]]
-                # append them onto the dataframe
-                dataframes.append(press)
-            # append each full dataframe to the target group dataframe
-            targetlist.append(dataframes)
-            # reset the dataframes list for the next target group
-            dataframes = []
-        return targetlist  
-
-
-    def _find_cutoff_values(self, targetlist):
-        """ Internal Function. Finds the 'cutoff' values -- where the avg will go from having N rats to N-1 rats. 
-
-        Parameters 
-        --- 
-        targetlist : list
-            nested list of dataframes seperated by target. 
-        
-        Returns 
-        --- 
-        cutofflist : list 
-            nested list of lists of cutoff values for each target group 
-        """
-        # create blank arrays for the cutoff value list and a blank array for use in the for loops
-        cutoff = [] 
-        cutofflist = []
-        # for each of the target groups, 
-        for target in targetlist:
-            # for each of the rats within the target groups, 
-            for frame in target:
-                # append the length of the dataframe to the cutoff list 
-                cutoff.append(frame.shape[0])
-            # append the list of cutoffs for each dataframe within the target group 
-            cutoff.sort()
-            cutofflist.append(cutoff)
-            # reset the blank array for the next target group 
-            cutoff = [] 
-        # return the full cutoff list of all target groups. 
-        return cutofflist  
-
-
-    def _averaging(self, targetlist):
-        """ Internal Function. Output will be a list of averaged dataframes, length of which will be the number of target ipi's used in training. 
-        Parameters 
-        --- 
-        targetlist : list
-            nested list of dataframes seperated by target. 
-        
-        Returns 
-        --- 
-        targetframe : list 
-            nested list of averaged dataframes for each target group
-        """ 
-        
-        # initiate the iteration variable at 0 
-        i = 0
-        # make a blank targetframe for the averaged dataframes. 
-        targetframe = [] 
-        # while there are still targetlists to go over, 
-        while i < len(targetlist): 
-            target = self.targets[i]
-            # grab the datframes by the target group
-            data = targetlist[i]         
-            # concatenate the data
-            newpress = pd.concat(data)
-            # use builtin .groupby() to stack the frames and then average. 
-            avg = newpress.groupby(level=0).mean()
-            # If the number of columns in newpress is not equal to the # of columns in 'avg', then column(s) have been dropped. 
-            if len(avg.columns) != len(newpress.columns):
-                # pull the columns from the data
-                col1 = data[0].columns.to_list()
-                # pull the columns from the averaged data, 
-                col2 = avg.columns.to_list()
-                # find the differences between the two. 
-                diff = list(set(col1).difference(col2))
-                # pull the columns that have been dropped out of the newpress frame
-                missing = data[0].copy()[diff]
-                # append that column to the avg dataframe. 
-                for i in range(len(diff)):
-                    avg[f'{missing.columns[i]}'] = missing.iloc[:,i]
-                # then continue... 
-
-            # reset the indicies to be from 0 to N
-            avg.reset_index()
-            # automatically gets rid of the target column if we had it, so add that on for future reference 
-            avg['target'] = np.full(avg.shape[0], target)
-            # append the data entry to the single averaged dataframe. 
-            targetframe.append(avg) 
-            # step up i
-            i += 1 
-        # return the list of averaged dataframes. 
-        return targetframe
-
-    
-    """ -------------------------------------------------------------------------------------------------- """
-
-    def Find_TargetFrame(self, target):
-        # have to find the targetframe that needs to be pulled 
-        i=0 
-        # while i is less than the number of targets,
-        while i < len(self.targetframe):
-            if (self.targetframe[i]).iloc[0,7] == target:
-                break
-            else: 
-                i += 1
-        
-        return self.targetframe[i]
-
-
-    def Find_i(self, target):
-        # Find the i of the targetframe that needs to be pulled. 
-
-        # make an empty list for the targets. 
-        targs = [] 
-        for i in range(len(self.targetframe)):
-            # append all of the target values inside the frame to the targs list
-            targs.append(self.targetframe[i]['target'][0])
-
-        # if the target does not exist within this data, 
-        if target not in targs:
-            # return none if it's not
-            return False
-        # otherwise iterate thru the targetframes to find the i. 
-        else:
-        # have to find the targetframe that needs to be pulled 
-            i=0 
-            # while i is less than the number of targets,
-            while i < len(self.targetframe):
-                if (self.targetframe[i]['target'][0]) == target:
-                    break
-                else: 
-                    i += 1
-        return i
-  
-    
-    def ShowOverview(self):
-        """ Returns overview of the data. 
-        
-        Params 
-        --- 
-        None
-        
-        Returns
-        info : print 
-            Info about how many presses, targets, and rats included. 
-        """
-        numrat = "error" # len(self.cuts[0])
-        targets = []
-        for frame in self.targetframe:
-            length = frame.shape[0]
-            target = frame.loc[0,"target"]
-            targets.append(target)
-        text = f"Number of Rats: {numrat} ... Number of Trials: {length} ... Targets: {targets} "
-        return text 
-        
-
-    def CutoffValues(self):
-        return self.cuts 
-
-
-    def MovingAverage(self, target, column, win = 1000, minwin = 1, boxcar = 300, err = 20):
-        """Returns an array with the moving average of all trial data from the specified column/data. 
-        
-        Parameters 
-        -------
-        target : int 
-            REQUIRED 
-            The numerical value of the target desired. 
-
-        columnname : str
-            REQUIRED
-            String of the column desired. Can be any of the columns in the dataframe, or 
-            'success' and 'cv' 
-
-        win : int
-            OPTIONAL
-            The number of sessions that should be used to calculate the moving average. 
-            Default is a window of 100 
-        
-        minwin : int
-            OPTIONAL
-            The number of sessions used to calculate a single average. Ex. minwin = 20 will 
-            Wait until the 20th row before calculating an average and place NaN in the first 19 rows.
-            Default is a window of 10
-
-        err : int
-            OPTIONAL
-            Whole number for the percentage bounds for the 'success' moving average. 
-            Default is 20 ( +-20% bounds ) 
-        
-        boxcar : int
-            OPTIONAL 
-            Whole number for the coefficient of variation smoothing average. 
-            Default is a window of 300
-        
-        Returns 
-        ------
-        avgs : np.array
-            Contains the moving average of the desired column
-        """
-
-        frame = self.Find_TargetFrame(target)
-
-        if column in frame.columns:
-            data = frame[column]
-            # use the pandas built-in 'rolling' to calculate the moving average. 
-            # and assign the array output to 'avgs'
-            avgs = (data.rolling(win, min_periods=minwin).mean())
-            return avgs 
-        
-        if column == ("Success" or "success"):
-            # grab the percentage error for each trial 
-            loss = (frame['loss']).to_numpy()
-            # define upper and lower bounds
-            upper = err/100
-            lower = -err/100 
-
-            #convert a bool array of whether or not losses are in between bounds to integer array 
-            success = ((loss <= upper) & (lower <= loss)).astype(int)
-            # make the data into a dataframe
-            df = pd.DataFrame(success, columns = ['Success'])
-            # use the pandas built-in 'rolling' to calculate the moving average. 
-            # and assign it to 'avgs'
-            avgs = (df.rolling(win, min_periods=minwin).mean())*100
-            # return the averages
-            return avgs
-        
-        if column == ("CV" or "cv"):
-
-            # grab the interval column from the prespecificied dataframe. 
-            data = frame['interval']
-
-            # find the average for the intervals. 
-            avg = (data.rolling(win, min_periods = minwin).mean())
-            # find the standard deviation for the intervals 
-            sdev = (data.rolling(win, min_periods = minwin).std())
-            # define the rough coefficient of variation as the standard deviation divided by the mean. 
-            roughcv = sdev/avg
-            # smooth the coefficient of variation with the moving average 
-            cv = (roughcv.rolling(boxcar, min_periods=1).mean())
-            # make sure any not a numbers are numpy not a number so they aren't plotted and don't break the matplotlib
-            # then convert to numpy
-            avgs = (cv.replace(pd.NA, np.NaN)).to_numpy()
-
-            # return the dataframe as a numpy array 
-            return avgs
-
-
-    def DeltaIPI(self, target1, target2, norm, window = 2000, minwin = 100): 
-        """Returns an array with the change in IPI's produced by a rat group. 
-        
-        Parameters 
-        -------
-        target1 : int 
-            The numerical value of the first target desired. 
-
-        target2 : int 
-            The numerical value of the second target desired. 
-
-        norm : str
-            Whether or not you want the data normalized to one. 
-        
-        window : int
-            Length of trials to the moving average. Default is 2000
-        
-        minwin : int 
-            Length for the start of the moving average. Default is 100
-
-        Returns 
-        ------
-        avgs : np.array
-            Contains the change in interval
-        """
-
-        i = self.Find_i(target1)
-        t1 = self.targetframe[i]['interval'].to_numpy()
-
-        i = self.Find_i(target2)
-        t2 = self.targetframe[i]['interval'].to_numpy()
-        
-        # cut the trials to the same length 
-        if len(t1) > len(t2):
-            cut = len(t2)
-        elif len(t1) < len(t2):
-            cut = len(t1)
-        elif len(t1) == len(t2):
-            cut = len(t1) 
-        
-        tt1 = t1[:cut]
-        tt2 = t2[:cut] 
-        
-        # find difference of each tap, with absolute value if target2 < target1 
-        d_ipi = abs((tt2-tt1))
-        # divide by the supposed max distance if norm is true
-        if norm != False:
-            d_ipi = d_ipi/abs((target2-target1))
-        # then take the moving average to smooth everything out. 
-        d_ipi = pd.Series(d_ipi).rolling(window, min_periods=minwin).mean()
-
-        # return it
-        return d_ipi
-
-
-    def CutByRat(self, dataframe, i, cv): 
-        """ Returns an array with the coefficient of variation in each group by target IPI 
-        
-        Parameters 
-        -------
-        dataframe : dataframe 
-            averaged dataframe for a specific target.
-
-        i : int 
-            The number in the targetframe that we are using (based on target wanted) 
+        ----------
+        holderlist : iterable
+            A list of dataholder objects
             
-        cv : np.array
-            Contains the coefficient of variation for each tap
+        Returns
+        -------
+        out : DataAvgs"""
+        self.holderlist = holderlist
+        self.nrats = len(holderlist)
 
+    def _average_group(self, group):
+        """Take a list of series and average them to output a single series. Lists do not need to be the same length.
+        
+        Parameters
+        ----------
+        group : list
+            list of pd.Series to average.
+        
+        Returns
+        -------
+        out : list
+            A one dimensional list that averages all the lists in `group`. 
+            For example, the first element of the list will be the average of the first elements in all the lists."""
+
+
+        return pd.concat(group).groupby(level = 0).mean()
+ 
+    def averaged_col(self, col, target = None):
+        """Return a column of averaged values from all rats.
+        
+        Parameters
+        ----------
+        col : str
+            The name of the column you want averaged, must be one of the columns from the DataHolder classes you instantiated with
+        target : int, optional
+            Include this if you only want values from a specific target"""
+
+        if not isinstance(target, type(None)):
+            cols = [i.get_by_target(target, col = col) for i in self.holderlist]
+        else:
+            cols = [i[col] for i in self.holderlist]
+        return self._average_group(cols)
+
+    def TrialSuccess(self, error, avgwindow = 100, target = None):
+        """Returns an array with the average percentage of trials within a moving window where the trial IPI was 
+        +- error % away from the target IPI. First computes this average for each rat then averages over all rats.
+        
+        Parameters 
+        -------
+        error : int
+            The numerical value of the percentage bounds from target desired. 
+        avgwindow : int
+            The number of sessions that should be used to calculate the moving average. 
+            Default is a window of 100
+        target : int, optional
+            include this if you want to only take values from a particular target IPI
+        
         Returns 
         ------
-        ints : dict
-            Dictionary of the cv data split up by the rat
-
-        taps : dict
-            Dictionary of the tap numbers split up by the rat         
+        avg : np.array
+            Contains the moving average of the successes
 
         """
+        cols = [i.TrialSuccess(error, avgwindow, target) for i in self.holderlist]
 
-        # grab the list of cuts from the targetframe dataframe that was given as an argument
-        cuts = dataframe.cuts[i]
-        # find the number of cuts (ie. the number of rats in that frame) 
-        leng = len(cuts)
-        # initiate a dictionary
-        ints = dict()
-        # The first "cut" will be from the 0th trial to the first cut -- where all of the rats are averaged. 
-        cutt = cv[:cuts[0]]
-        # update the dictionary to include this value. 
-        ints.update({'0': cutt})
-        # for the number of rats in this frame, 
-        for i in range(leng-1):
-            # make another slice of the data from the ith to the ith+1 cut values 
-            # each subsequent slice will be where there is one less rat being averaged over. 
-            cutt = cv[cuts[i]:cuts[i+1]]
-            # add that slice to the dictionary 
-            ints.update({f'{i+1}': cutt}) 
-
-        # initiate a dictionary for the taps
-        taps = dict()
-        # make a dictionary entry of a range of values from 0 to the first cut 
-        # will be used for plotting so the 1st entry in the ints dictionary are the values for the 
-        # taps in the 1st entry of the taps dictionary 
-        taps.update({'0':range(cuts[0])}) 
-        # for the number of rats, 
-        for i in range(leng-1):
-            # keep adding dictionary entries -- each one will be a range from XX to YY where there is a different 
-            # number of rats being averaged over. These tap trial numbers match up to the ints dictionary
-            taps.update({f'{i+1}':range(cuts[i], cuts[i+1])}) 
-        
-        # return both the ints and the taps for plotting. 
-        return ints, taps 
+        return self._average_group(cols)
+    
 
 
 class Last2000:

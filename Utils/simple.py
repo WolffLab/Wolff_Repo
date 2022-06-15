@@ -121,6 +121,7 @@ def get_directory(prompt = 'chose a directory'):
 
     #return file location as string
     return loc
+
 def func_on_subsets(vals, divsize, func, manage_extras = "auto", xs = None):
     """apply a function to subdivisions of size `divsize` of a larger list.
     
@@ -241,6 +242,46 @@ def boxcar(vals,divsize,**kwargs):
     out : int
         Result of applied boxcar."""
     return func_on_subsets(vals,divsize,np.mean,**kwargs)
+
+def moving_average(vals,windowsize):
+    """Returns a moving average of `vals`.
+    
+    Parameters
+    ----------
+    vals : iterable
+        list you want the moving average applied to.
+    windowsize : int
+        Size of window, must be odd.
+    
+    Returns
+    -------
+    out : list
+    
+    Raises
+    ------
+    Exception
+        Raises exception if `windowsize` is not odd."""
+    return func_convolve(vals, np.mean, windowsize)
+
+def moving_cv(vals,windowsize):
+    """Returns a moving coefficient of variation of `vals`.
+    
+    Parameters
+    ----------
+    vals : iterable
+        list you want the moving cv applied to.
+    windowsize : int
+        Size of window, must be odd.
+    
+    Returns
+    -------
+    out : list
+    
+    Raises
+    ------
+    Exception
+        Raises exception if `windowsize` is not odd."""
+    return func_convolve(vals, stats.variation, windowsize)
 
 #performs a linear fit and returns the datapoints and the slope/intercept
 def lin_fit(ys,xs = "Default"):

@@ -7,27 +7,34 @@ import numpy as np
 class DataAvgs:
     """Class used to average the data between several different rats."""
 
-    def __init__(self, holderlist):
+    def __init__(self, holderlist, min_rats = 1):
         """Initializes class.
         
         Parameters
         ----------
         holderlist : iterable
             A list of dataholder objects
-            
+        min_rats : int, optional
+            Minimum amount of rats to include in an average, defaults to 1.
+    
         Returns
         -------
         out : DataAvgs"""
         self.holderlist = holderlist
+        self.min_rats = min_rats
         self.nrats = len(holderlist)
 
-    def _average_group(self, group):
+    def _average_group(self, group, include_sem = False):
         """Take a list of series and average them to output a single series. Lists do not need to be the same length.
         
         Parameters
         ----------
         group : list
             list of pd.Series to average.
+
+        include_sem : bool, optional
+            Wether or not to include standard error of the mean.
+            Defaults to False.
         
         Returns
         -------
@@ -35,23 +42,37 @@ class DataAvgs:
             A one dimensional list that averages all the lists in `group`. 
             For example, the first element of the list will be the average of the first elements in all the lists."""
 
+        #first reset all the indices so the concat combines the right values
+        group = [i.reset_index(drop = True) for i in group]
 
-        return pd.concat(group).groupby(level = 0).mean()
+        #trim group to account for minimum amount of rats allowed in average
+        lens = np.sort([len(i) for i in group]).tolist()
+        maxlen = lens[-self.min_rats]
+        for n in range(len(group)):
+            if len(group[n]) > maxlen:
+                group[n] = group[n][0:maxlen]
+
+        means = pd.concat(group).groupby(level = 0).mean()
+        if include_sem:
+            sems = pd.concat(group).groupby(level = 0).sem()
+            return means, sems
+        else:
+            return means
  
     def set_of(self, attr):
-        """Return all possible values of an column.
+        """Return all possible values of a column accounting for minimum allowed rats.
         
         Parameters
         ----------
         attr : str
-            Name of the column you wants values from. For example set_of('target') will return all possible values for targets among all the rats in the class."""
+            Name of the column you wants values from. For example set_of('target') will return all values for target ipi that are shared by more that `min_rats`."""
 
         outval = []
         for holder in self.holderlist:
             outval = outval + holder.set_of(attr)
-        return set(outval)
+        return set([i for i in outval if outval.count(i) >= self.min_rats])
 
-    def averaged_col(self, col, target = None):
+    def averaged_col(self, col, target = None, include_sem = False):
         """Return a column of averaged values from all rats.
         
         Parameters
@@ -59,15 +80,22 @@ class DataAvgs:
         col : str
             The name of the column you want averaged, must be one of the columns from the DataHolder classes you instantiated with
         target : int, optional
-            Include this if you only want values from a specific target"""
+            Include this if you only want values from a specific target
+        include_sem : bool
+            Wether or not to include standard error, defaults to False.
+        
+        Returns
+        -------
+        out : pd.Series
+            Averaged column"""
 
         if not isinstance(target, type(None)):
             cols = [i.get_by_target(target, col = col) for i in self.holderlist]
         else:
             cols = [i[col] for i in self.holderlist]
-        return self._average_group(cols)
+        return self._average_group(cols, include_sem = include_sem)
 
-    def TrialSuccess(self, error, avgwindow = 100, target = None):
+    def TrialSuccess(self, error, avgwindow = 100, target = None, include_sem = False):
         """Returns an array with the average percentage of trials within a moving window where the trial IPI was 
         +- error % away from the target IPI. First computes this average for each rat then averages over all rats.
         
@@ -80,6 +108,8 @@ class DataAvgs:
             Default is a window of 100
         target : int, optional
             include this if you want to only take values from a particular target IPI
+        include_sem : bool
+            Wether to include standard error, defaults to False.
         
         Returns 
         ------
@@ -89,7 +119,7 @@ class DataAvgs:
         """
         cols = [i.TrialSuccess(error, avgwindow, target) for i in self.holderlist]
 
-        return self._average_group(cols)
+        return self._average_group(cols, include_sem = include_sem)
 
     def DelIPI(self, target1, target2, norm = True):
         """Returns the difference in average IPIs between two targets among the group of rats. Length will be cut based on whichever target has the least trials.

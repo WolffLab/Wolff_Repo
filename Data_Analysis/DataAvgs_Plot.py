@@ -52,7 +52,39 @@ class AveragedRats:
             num = ma.floor(ma.log10(abs(value))/3)
         value = round(value / 1000**num, 2)
         return f'{value:g}'+' KM'[num]
-   
+
+    def _apply_filters(self, data, window, cv_window, boxcar):
+        """Apply moving cv, moving average, and boxcar to a dataset. Can chose to skip any or all of the filters.
+        
+        Parameters
+        ----------
+        window : int or None, Optional
+            size of the moving average window if you want to take a moving average, defaults to None.
+        
+        cv_window : int or None, optional
+            Size of moving window for computing coefficient of variation, if none then does not compute CV.
+            Defaults to none.
+
+        boxcar : int
+            Size of boxcar if wanted.
+            Defaults to none.
+            
+        Returns
+        -------
+        outdata : iterable
+            Data with all the requested filter parameters applied."""
+        outdata = data
+        #apply moving cv if requested
+        if not isinstance(cv_window, type(None)):       
+            outdata = self.Moving_CV(outdata, window = cv_window)
+        #now apply moving average if requested
+        if not isinstance(window, type(None)):
+            outdata = self.Moving_Average(outdata, window = window)
+        #now apply boxcar if requested
+        if not isinstance(boxcar, type(None)):
+            outdata = self.Boxcar(outdata, window = boxcar)
+        return outdata
+
     def Moving_Average(self, data, window = 1001):
         """Return a moving average over `data`.
         
@@ -117,7 +149,7 @@ class AveragedRats:
 
         return boxcar(data, window)
 
-    def Plot(self, ptype = 'IPI', target = 700, window = None, error = 10, boxcar = None, savepath = None, ylo = 0, yhi = "Default", target2 = 500, norm = True):
+    def Plot(self, ptype = 'IPI', target = 700, window = None, cv_window = None, success_window = 1001, error = 10, boxcar = None, savepath = None, ylim = "Default", target2 = 500, norm = True, include_sem = True):
         """ Returns the requested plot with the requested parameters. 
         
         Parameters 
@@ -125,7 +157,7 @@ class AveragedRats:
         ptype : str
             REQUIRED
             Name of the plot that you want to make. 
-            allowed strings: "IPI", "Success", "Tap1", "Tap2"
+            allowed strings: "IPI", "Success", "Tap1", "Tap2", "cv", "deltaipi"
 
         target : int 
             REQUIRED
@@ -134,14 +166,19 @@ class AveragedRats:
         
         window : int or None, Optional
             size of the moving average window if you want to take a moving average, defaults to None.
-
-        minwindow : int 
-            REQUIRED
-            Number for the minimum window for moving average calculatons 
-            Default is 100
         
+        cv_window : int or None, optional
+            Size of moving window for computing coefficient of variation, if none that does not compute CV.
+            Defaults to none.
+
+        success_window : int or None, optional
+            The size of the moving window for success plots. 
+            Defaults to 1001.
+            This value is only used if `ptype` is "success".
+            Must be an odd number.
+
         error : int
-            Only required for Success plots
+            Only required for Success plots.
             Number for the error margins for the Success plots. 
             Default is 10% 
 
@@ -150,36 +187,153 @@ class AveragedRats:
             Number for the window length for the moving average "smoothing" function
             Default is 300
         
+        savepath : str or None, optional
+            The path to save the figure to.
+            Defaults to None.
+
+        ylim : tuple or "Default", optional
+            Option to manually set the ylimits of the plot.
+            Format is (lower limit, upper limit).
+
+        target2 : int, optional
+            Second target if `ptype` is "delipi".
+            Must be specified if `ptype` is "delipi".
+
+        norm : bool, optional
+            Wether or not to normalize "delipi" plots.
+            Default is True.
+
+        include_sem : bool
+            Wether or not to include standard error as shaded region in plot.
+            Does not work with "delipi" plots.
+
         Returns 
         ---- 
-        unnamed : matplotlib plot 
+        out : pyplot.plt 
         """
-        
-        
-        # Graph of Tap1 & IPI vs. trials 
-        if ptype.lower() == 'tap1':
-            self.Tap_vIPI(target, window = window)
 
-        # Graph of Tap2 & IPI vs. trials 
+        # make a list of numbers to iterate over for the colors. 
+        cols = np.arange(len(self.rat))
+
+        # define the plotting style
+        plt.style.use('default')
+
+        #create figure
+        fig, ax = plt.subplots()
+        
+        dsets = []
+        # Graph of Tap1 vs. trials
+        if ptype.lower() == 'tap1':
+            for rat, name, c in zip(self.rat, self.names, cols):
+                ydata, sems = rat.averaged_col('tap_1_len', target = target, include_sem = True)
+                ydata = self._apply_filters(ydata, window = window, cv_window = cv_window, boxcar = boxcar)
+                ax.plot(ydata, label = name + ' tap1', color = self.colors[c])
+                #plot sem if necessary
+                if include_sem:
+                    sems = self._apply_filters(sems, window = window, cv_window = cv_window, boxcar = boxcar)
+                    xvals = range(len(ydata))
+                    lower_error = [ydata[i] - sems[i] for i in xvals]
+                    upper_error = [ydata[i] + sems[i] for i in xvals]
+                    ax.fill_between(xvals, lower_error, upper_error, color = self.colors[c], alpha = 0.5)
+            title = f"Average Length of First Tap (Target = {target}ms)"
+            if not isinstance(cv_window, type(None)):
+                title = "Variation in " + title
+                ylabel = "Variation"
+            else:
+                ylabel = "Time (ms)"
+            xlabel = "Trial"
+
+        # Graph of Tap2 vs. trials 
         elif ptype.lower() == 'tap2':
-            self.Tap_vIPI(target = target, tap = 2, window = window)
+            for rat, name, c in zip(self.rat, self.names, cols):
+                ydata, sems = rat.averaged_col('tap_2_len', target = target, include_sem = True)
+                ydata = self._apply_filters(ydata, window = window, cv_window = cv_window, boxcar = boxcar)
+                ax.plot(ydata, label = name + ' tap2', color = self.colors[c])
+                if include_sem:
+                    sems = self._apply_filters(sems, window = window, cv_window = cv_window, boxcar = boxcar)
+                    xvals = range(len(ydata))
+                    lower_error = [ydata[i] - sems[i] for i in xvals]
+                    upper_error = [ydata[i] + sems[i] for i in xvals]
+                    ax.fill_between(xvals, lower_error, upper_error, color = self.colors[c], alpha = 0.5)
+            title = f"Average Length of Second Tap (Target = {target}ms)"
+            if not isinstance(cv_window, type(None)):
+                title = "Variation in " + title
+                ylabel = "Variation"
+            else:
+                ylabel = "Time (ms)"
+            xlabel = "Trial"
 
         # Graph of IPI vs. trials 
         elif ptype.lower() in ('ipi', 'interval'):
-            self.IPI(target = target, window = window, ylo = ylo, yhi = yhi, save = savepath)
+            for rat, name, c in zip(self.rat, self.names, cols):
+                ydata, sems = rat.averaged_col('interval', target = target, include_sem = True)
+                ydata = self._apply_filters(ydata, window = window, cv_window = cv_window, boxcar = boxcar)
+                ax.plot(ydata, label = name + ' IPIs', color = self.colors[c])
+                if include_sem:
+                    sems = self._apply_filters(sems, window = window, cv_window = cv_window, boxcar = boxcar)
+                    xvals = range(len(ydata))
+                    lower_error = [ydata[i] - sems[i] for i in xvals]
+                    upper_error = [ydata[i] + sems[i] for i in xvals]
+                    ax.fill_between(xvals, lower_error, upper_error, color = self.colors[c], alpha = 0.5)
+                
+            title = f"Average Length of Interpress Interval (Target = {target}ms)"
+            if not isinstance(cv_window, type(None)):
+                title = "Variation in " + title
+                ylabel = "Variation"
+            else:
+                ylabel = "Time (ms)"
+                ax.axhline(target, label = "Target IPI")
+            xlabel = "Trial"
 
         # Graph of Success vs. trials
         elif ptype.lower() == 'success':
-            self.Success(target = target, error = error, window = window, save = savepath)
-
-        elif ptype.lower() == "cv":
-            self.CV(target = target, window = window, box = boxcar, ylo = ylo, save = savepath)
+            for rat, name, c in zip(self.rat, self.names, cols):
+                ydata, sems = rat.TrialSuccess(error, window = success_window, target = target, include_sem = True)
+                ydata = self._apply_filters(ydata, window = window, cv_window = cv_window, boxcar = boxcar)
+                ax.plot(ydata, label = name + ' Success', color = self.colors[c])
+                if include_sem:
+                    sems = self._apply_filters(sems, window = window, cv_window = cv_window, boxcar = boxcar)
+                    xvals = range(len(ydata))
+                    lower_error = [ydata[i] - sems[i] for i in xvals]
+                    upper_error = [ydata[i] + sems[i] for i in xvals]
+                    ax.fill_between(xvals, lower_error, upper_error, color = self.colors[c], alpha = 0.5)
+            title = f"Average Percentage of Trials Within {error}% of {target}ms."
+            if not isinstance(cv_window, type(None)):
+                title = "Variation in " + title
+                ylabel = "Variation"
+            else:
+                ylabel = "%"
+            xlabel = "Trial"
 
         elif ptype.lower() in ("deltaipi", "delta ipi", "delipi", "del ipi"):
-            print('plotting del ipi')
-            self.DelIPI(target1 = target, target2 = target2, window = window, save = savepath, norm = norm)
+            for rat, name, c in zip(self.rat, self.names, cols):
+                ydata = rat.DelIPI(target, target2, norm)
+                ydata = self._apply_filters(ydata, window = window, cv_window = cv_window, boxcar = boxcar)
+                ax.plot(ydata, label = name, color = self.colors[c])
+            title = f"Average Difference in IPI Between Trials with {target}ms and {target2}ms Targets."
+            if not isinstance(cv_window, type(None)):
+                title = "Variation in " + title
+                ylabel = "Variation"
+            else:
+                ylabel = "Difference"
+            xlabel = "Trial"
 
+        #set y limits if necessary
+        if not ylim == "Default":
+            ax.set_ylim(ylim)
+        
+        # create legend
+        frame = plt.legend(loc='upper left', bbox_to_anchor=(0, -0.15), fancybox=True, ncol=3).get_frame()
+        frame.set_edgecolor("black")
+        frame.set_boxstyle('square')
 
+        ax.set(ylabel = ylabel, xlabel = xlabel, title = title)
+        #save if requested
+        if not isinstance(savepath, type(None)): 
+            plt.savefig(savepath, bbox_extra_artists=(frame,), bbox_inches = 'tight')
+
+        #display plot
+        plt.show()
 
     def DelIPI(self, target1, target2, win = None, save = None, norm = True): 
         """Plots the difference in average IPIs between two targets among the group of rats. 
@@ -202,100 +356,10 @@ class AveragedRats:
 
         norm : bool, optional
             Wether or not to normalize using the difference of the two target IPIs, defaults to True."""
-        
-        # make a list of numbers to iterate over for the colors. 
-        cols = np.arange(len(self.rat))
 
-        # define the plotting style
-        plt.style.use('default') 
+        self.Plot(ptype = 'delipi', target = target1, target2 = target2, window = win, savepath = save, norm = norm)
 
-        # now that all posibilities of self.rat are lists, 
-        for rat, name, c in zip(self.rat, self.names, cols):
-            delipi = rat.DelIPI(target1, target2, norm)
-            if not isinstance(win, type(None)):
-                delipi = self.Moving_Average(delipi, win)
-            trials = range(len(delipi))
-
-            plt.plot(trials, delipi, color = self.colors[c], label = f'{name}')
-        
-        #if norm != False: 
-            #plt.ylim((0,1)) 
-        #else: 
-            #plt.ylim((-50,target2-target1))
-        
-        frame = plt.legend(loc='upper left', bbox_to_anchor=(0, -0.15), fancybox=True, ncol=3).get_frame()
-        frame.set_edgecolor("black")
-        frame.set_boxstyle('square')
-        plt.xlabel("Tap Number")
-        plt.ylabel(r'$\Delta$IPI (ms)') 
-        plt.title(r'$\Delta$IPI' + f' between {target1}ms and {target2}ms Trials') 
-
-        if not isinstance(save, type(None)): 
-            plt.savefig(save, bbox_extra_artists=(frame,), bbox_inches = 'tight') 
-        plt.show() 
-
-
-    def Tap_vIPI(self, target, tap = 1, window = None):
-        """Plot of tap length and IPI for a specified target.
-        
-        Parameters
-        ----------
-        tap : 1 or 2, optional
-            Which tap length you want to compare with (first or second tap).
-            Defaults to 1.
-        target : int
-            target IPI
-        window : int or None, Optional
-            Size of moving average window if you want to do a moving average, must be odd.
-            Defaults to None.
-        
-        Returns
-        -------
-        out : plt.plot"""
-
-        # define the plotting style 
-        plt.style.use('default')
-        fig, ax = plt.subplots()
-        # blank array for the length of the trials
-        length = []
-        
-        # now that all posibilities of self.rat are lists
-        for rat, name in zip(self.rat, self.names):
-        
-            # define the interval 
-            interval = rat.averaged_col('interval', target = target)
-            taps = rat.averaged_col(f'tap_{tap}_len', target = target)
-            if not isinstance(window, type(None)):
-                interval = self.Moving_Average(interval, window)
-                taps = self.Moving_Average(taps, window)
-            
-            # make a list for the trials 
-            trials = range(len(interval))
-            length.append(trials[-1])
-
-            # plot 
-            ax.plot(trials, taps, label= f'{name}, Tap {tap}')
-            ax.plot(trials, interval, label=f'{name}, IPI')
-        
-        # plot a line at where the target should be. 
-        ax.hlines(target, 0, np.max(length), colors = ['xkcd:grey'], linestyles = ":", label="Target")
-
-        plt.ylim((0,target +100))
-        
-        plt.xlabel('Trials', labelpad = -10, loc = "right")
-        # code from stackoverflow for formatting the axis as #'s of k 
-        ax.xaxis.set_major_formatter(plt.FuncFormatter(self._xlabel))
-        
-        frame = plt.legend(loc='upper left', bbox_to_anchor=(0, -0.1), fancybox=True, ncol=3).get_frame()
-        frame.set_edgecolor("black")
-        frame.set_boxstyle('square')
-
-        plt.ylabel(' Time (ms)')
-        plt.title(f'Tap {tap} & Interval')
-        plt.show()
-
-
-    def IPI(self, target, window = None, ylo = 0, yhi = "Default", save = None):
+    def IPI(self, target, window = None, ylim = "Default", save = None):
         """Plots the IPIs for specific target IPI
         
         Parameters
@@ -307,13 +371,10 @@ class AveragedRats:
             Size of window for moving average if you want one, must be an odd number.
             Defaults to None.
 
-        ylow : int, optional
-            Lower limit on y-axis.
-            Defaults to 0.
-        
-        yhi : int, optional
-            Upper limit on y-axis
-            Defaults to `target` + 100
+        ylim : tuple or "Default", optional
+            Option to manually set the ylimits of the plot.
+            Format is (lower limit, upper limit).
+            Default is (0, `target` + 100).
         
         save : str, optional
             A path to save the figure in, defaults to none.
@@ -322,43 +383,7 @@ class AveragedRats:
         -------
         out : plt.plot"""
     
-        # So plots show up on a dark background VSCode
-        plt.style.use('default')
-        fig, ax = plt.subplots()
-        length = []
-
-        # for each of the rats being plotted, 
-        for r in range(len(self.rat)): 
-            # find the coefficient of variation for this rat and then plot it. 
-            interval = self.rat[r].averaged_col('interval', target)
-            if not isinstance(window, type(None)):
-                interval = self.Moving_Average(interval, window)
-            # define the x axis based on the length of the successes
-            trials = range(len(interval))
-            length.append(trials[-1])
-            # plot with a different color for each rat in the ratlist. 
-            ax.plot(trials, interval, color = self.farben[r], label=f'{self.names[r]}')
-        
-        ax.hlines(target, 0, np.max(length), 'xkcd:grey', ":", label = "Target") 
-
-        if yhi == 'Default':
-            plt.ylim((ylo, target+100))
-        else:
-            plt.ylim((ylo, yhi)) 
-        
-        plt.xlabel('Trials', loc = "right")
-        # code from stackoverflow for formatting the axis as #'s of k 
-        ax.xaxis.set_major_formatter(plt.FuncFormatter(self._xlabel))
-        
-        frame = plt.legend(loc='upper left', bbox_to_anchor=(0, -0.15), fancybox=True, ncol=2).get_frame()
-        frame.set_edgecolor("black")
-        frame.set_boxstyle('square')
-        
-        plt.ylabel(f' Interval (miliseconds)')
-        plt.title(f'IPI for {target}ms target IPI')
-        if not isinstance(save, type(None)):
-            fig.savefig(save, bbox_extra_artists=(frame,), bbox_inches = 'tight') 
-        plt.show() 
+        self.Plot(ptype = "ipi", target = target, window = window, ylim = ylim, savepath = save)
 
 
     def Success(self, target, error, window, save = None): 
@@ -383,41 +408,10 @@ class AveragedRats:
         -------
         out : plt.plot"""
 
-
-        # So plots show up on a dark background VSCode
-        plt.style.use('default')
-        fig, ax = plt.subplots()
-
-        # for each of the rats being plotted, 
-        for r, name in zip(range(len(self.rat)), self.names):
-            # find the coefficient of variation for this rat and then plot it. 
-            success = self.rat[r].TrialSuccess(error = error, avgwindow = window, target = target)
-            
-            # define the x axis based on the length of the successes
-            trials = range(success.shape[0])
-            # plot with a different color for each rat in the ratlist. 
-            ax.plot(trials, success, label=f'{name} group', color = self.farben[r])
-
-        # Aesthetic Changes ________________________________________________
-
-        plt.ylim((0,100))
-        
-        plt.xlabel('Trials', loc = "right")
-        # code from stackoverflow for formatting the axis as #'s of k 
-        ax.xaxis.set_major_formatter(plt.FuncFormatter(self._xlabel))
-        
-        frame = plt.legend(loc='upper left', bbox_to_anchor=(0, -0.15), fancybox=True, ncol=2).get_frame()
-        frame.set_edgecolor("black")
-        frame.set_boxstyle('square')
-        
-        plt.ylabel(f'Percent of trials within limit (moving {window} trial window) ')
-        plt.title(f'Success Rate within +-{error}% of {target}ms target IPI')
-        if not isinstance(save, type(None)):
-            fig.savefig(save, bbox_extra_artists=(frame,), bbox_inches = 'tight') 
-        plt.show()
+        self.plot(ptype = 'success', target = target, error = error, success_window = window, savepath = save)
 
 
-    def CV(self, target, window, box = None, ylo = 0, save = None): 
+    def CV(self, target, window, box = None, save = None): 
         """Plots a moving window coefficient of variation over all IPIs for a particular target.
         
         Parameters
@@ -431,10 +425,6 @@ class AveragedRats:
         box : int or None, optional
             Size of boxcar if you want to run a boxcar filter over data.
             Defaults to None.
-
-        ylo : int, optional
-            Lower limit on y-axis.
-            Defaults to 0.
         
         save : str, optional
             A path to save the figure in, defaults to none.
@@ -443,43 +433,8 @@ class AveragedRats:
         -------
         out : plt.plot"""
 
-        
-        plt.style.use('default')
-        fig, ax = plt.subplots()
-
         # make an array for the max height
-        height = []
-        
-
-        for r in range(len(self.rat)): 
-            # find the coefficient of variation for this rat and then plot it. 
-            cv = self.Moving_CV(self.rat[r].averaged_col('interval', target = target), window = window)
-            if not isinstance(box, type(None)):
-                cv = self.Boxcar(cv, box)
-            trials = range(len(cv))
-
-            max = np.nanmax(cv)
-            height.append(max)
-
-            # plot with a different color for each rat in the ratlist. 
-            ax.plot(trials, cv, color = self.farben[r], label=f'{self.names[r]} group')
-
-        ylimit = np.max(height) + 0.02
-        plt.ylim((ylo,ylimit))
-        
-        plt.xlabel('Trials', loc = "right")
-        # code from stackoverflow for formatting the axis as #'s of k 
-        ax.xaxis.set_major_formatter(plt.FuncFormatter(self._xlabel))
-        
-        frame = plt.legend(loc='upper left', bbox_to_anchor=(0, -0.15), fancybox=True, ncol=3).get_frame()
-        frame.set_edgecolor("black")
-        frame.set_boxstyle('square')
-
-        plt.ylabel('Coefficient of Variation')
-        plt.title(f'Coefficient of Variation for {target}ms target IPI')
-        if not isinstance(save, type(None)):
-            fig.savefig(save, bbox_extra_artists=(frame,), bbox_inches = 'tight') 
-        plt.show()
+        self.plot(ptype = 'interval', target = target, cv_window = window, boxcar = box, savepath = save)
 
 
 

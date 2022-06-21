@@ -288,7 +288,7 @@ class AveragedRats:
         # Graph of Success vs. trials
         elif ptype.lower() == 'success':
             for rat, name, c in zip(self.rat, self.names, cols):
-                ydata, sems = rat.TrialSuccess(error, window = success_window, target = target, include_sem = True)
+                ydata, sems = rat.TrialSuccess(error = error, avgwindow = success_window, target = target, include_sem = True)
                 ydata = self._apply_filters(ydata, window = window, cv_window = cv_window, boxcar = boxcar)
                 ax.plot(ydata, label = name + ' Success', color = self.colors[c])
                 if include_sem:

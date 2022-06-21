@@ -473,7 +473,7 @@ class DataHolder:
         # and assign it to 'avgs'
         avgs = (df.rolling(avgwindow, min_periods=1).mean())*100
         # return the averages
-        return avgs
+        return avgs['Success']
 
     def MovingAverage(self, columnname, win = 100, minwin = 10, err = 20, box = 300):
         """ Returns an array with the moving average of all trial data from the specified column/data. 

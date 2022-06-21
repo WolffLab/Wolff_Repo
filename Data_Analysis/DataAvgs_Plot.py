@@ -218,19 +218,22 @@ class AveragedRats:
         # define the plotting style
         plt.style.use('default')
 
-        #create figure
+        #create figure(
         fig, ax = plt.subplots()
         
         dsets = []
         # Graph of Tap1 vs. trials
         if ptype.lower() == 'tap1':
             for rat, name, c in zip(self.rat, self.names, cols):
-                ydata, sems = rat.averaged_col('tap_1_len', target = target, include_sem = True)
-                ydata = self._apply_filters(ydata, window = window, cv_window = cv_window, boxcar = boxcar)
+                if isinstance(cv_window, type(None)):
+                    ydata, sems = rat.averaged_col('tap_1_len', target = target, include_sem = True)
+                else:
+                    ydata, sems = rat.cv_col('tap_1_len', cv_window = cv_window, target = target, include_sem = True)
+                ydata = self._apply_filters(ydata, window = window, cv_window = None, boxcar = boxcar)
                 ax.plot(ydata, label = name + ' tap1', color = self.colors[c])
                 #plot sem if necessary
                 if include_sem:
-                    sems = self._apply_filters(sems, window = window, cv_window = cv_window, boxcar = boxcar)
+                    sems = self._apply_filters(sems, window = window, cv_window = None, boxcar = boxcar)
                     xvals = range(len(ydata))
                     lower_error = [ydata[i] - sems[i] for i in xvals]
                     upper_error = [ydata[i] + sems[i] for i in xvals]
@@ -246,11 +249,14 @@ class AveragedRats:
         # Graph of Tap2 vs. trials 
         elif ptype.lower() == 'tap2':
             for rat, name, c in zip(self.rat, self.names, cols):
-                ydata, sems = rat.averaged_col('tap_2_len', target = target, include_sem = True)
-                ydata = self._apply_filters(ydata, window = window, cv_window = cv_window, boxcar = boxcar)
+                if isinstance(cv_window, type(None)):
+                    ydata, sems = rat.averaged_col('tap_2_len', target = target, include_sem = True)
+                else:
+                    ydata, sems = rat.cv_col('tap_2_len', cv_window = cv_window, target = target, include_sem = True)
+                ydata = self._apply_filters(ydata, window = window, cv_window = None, boxcar = boxcar)
                 ax.plot(ydata, label = name + ' tap2', color = self.colors[c])
                 if include_sem:
-                    sems = self._apply_filters(sems, window = window, cv_window = cv_window, boxcar = boxcar)
+                    sems = self._apply_filters(sems, window = window, cv_window = None, boxcar = boxcar)
                     xvals = range(len(ydata))
                     lower_error = [ydata[i] - sems[i] for i in xvals]
                     upper_error = [ydata[i] + sems[i] for i in xvals]
@@ -266,11 +272,14 @@ class AveragedRats:
         # Graph of IPI vs. trials 
         elif ptype.lower() in ('ipi', 'interval'):
             for rat, name, c in zip(self.rat, self.names, cols):
-                ydata, sems = rat.averaged_col('interval', target = target, include_sem = True)
-                ydata = self._apply_filters(ydata, window = window, cv_window = cv_window, boxcar = boxcar)
+                if isinstance(cv_window, type(None)):
+                    ydata, sems = rat.averaged_col('interval', target = target, include_sem = True)
+                else:
+                    ydata, sems = rat.cv_col('interval', cv_window = cv_window, target = target, include_sem = True)
+                ydata = self._apply_filters(ydata, window = window, cv_window = None, boxcar = boxcar)
                 ax.plot(ydata, label = name + ' IPIs', color = self.colors[c])
                 if include_sem:
-                    sems = self._apply_filters(sems, window = window, cv_window = cv_window, boxcar = boxcar)
+                    sems = self._apply_filters(sems, window = window, cv_window = None, boxcar = boxcar)
                     xvals = range(len(ydata))
                     lower_error = [ydata[i] - sems[i] for i in xvals]
                     upper_error = [ydata[i] + sems[i] for i in xvals]

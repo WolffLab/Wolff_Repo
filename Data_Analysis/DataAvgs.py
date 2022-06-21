@@ -72,6 +72,39 @@ class DataAvgs:
             outval = outval + holder.set_of(attr)
         return set([i for i in outval if outval.count(i) >= self.min_rats])
 
+    def cv_col(self, col, cv_window = 1001, target = None, include_sem = False):
+        """First take a moving window cv of a column for each rat then average those columns together.
+
+         Parameters
+        ----------
+        col : str
+            The name of the column you want
+        cv_window : int
+            Size of moving window for computing cv, must be odd.
+            Default is 1001.
+        target : int, optional
+            Include this if you only want values from a specific target
+        include_sem : bool
+            Wether or not to include standard error, defaults to False.
+        
+        Returns
+        -------
+        out : pd.Series
+            averaged cv columns
+        
+        """
+
+        if not isinstance(target, type(None)):
+            cols = [i.get_by_target(target, col = col) for i in self.holderlist]
+        else:
+            cols = [i[col] for i in self.holderlist]
+
+        #take cvs
+        cols = [pd.Series(moving_cv(i, windowsize = cv_window)) for i in cols]
+
+        
+        return self._average_group(cols, include_sem = include_sem)
+    
     def averaged_col(self, col, target = None, include_sem = False):
         """Return a column of averaged values from all rats.
         

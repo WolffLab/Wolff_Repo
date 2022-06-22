@@ -1,5 +1,6 @@
 
 from Wolff_Repo.Utils.simple import *
+from Wolff_Repo.Utils.simple import boxcar as boxcar_function
 import pandas as pd
 import scipy as sp
 import numpy as np
@@ -24,14 +25,22 @@ class DataAvgs:
         self.min_rats = min_rats
         self.nrats = len(holderlist)
 
-    def _average_group(self, group, include_sem = False):
+    def _average_group(self, group, window = None, cv_window = None, boxcar = None, include_sem = False):
         """Take a list of series and average them to output a single series. Lists do not need to be the same length.
+        Includes options to apply filters before averaging.
         
         Parameters
         ----------
         group : list
             list of pd.Series to average.
-
+        window : int or None, Optional
+            size of the moving average window if you want to take a moving average, defaults to None.
+        cv_window : int or None, optional
+            Size of moving window for computing coefficient of variation, if none then does not compute CV.
+            Defaults to none.
+        boxcar : int
+            Size of boxcar if wanted.
+            Defaults to none.
         include_sem : bool, optional
             Wether or not to include standard error of the mean.
             Defaults to False.
@@ -41,6 +50,9 @@ class DataAvgs:
         out : list
             A one dimensional list that averages all the lists in `group`. 
             For example, the first element of the list will be the average of the first elements in all the lists."""
+
+        #apply filters before operating
+        group = self._apply_filters(group, window = window, cv_window=cv_window, boxcar = boxcar)
 
         #first reset all the indices so the concat combines the right values
         group = [i.reset_index(drop = True) for i in group]
@@ -58,7 +70,51 @@ class DataAvgs:
             return means, sems
         else:
             return means
+
+    def _apply_filters(self, data, window, cv_window, boxcar):
+        """Apply moving cv, moving average, and boxcar to a a list of lists. Can chose to skip any or all of the filters.
+        Group is returned as list of pd.Series even if no filters are applied.
+        
+        Parameters
+        ----------
+        window : int or None, Optional
+            size of the moving average window if you want to take a moving average, defaults to None.
+        cv_window : int or None, optional
+            Size of moving window for computing coefficient of variation, if none then does not compute CV.
+            Defaults to none.
+        boxcar : int
+            Size of boxcar if wanted.
+            Defaults to none.
+            
+        Returns
+        -------
+        outdata : list of pd.Series
+            Data with all the requested filter parameters applied."""
+
+        outdata = data
+        #apply moving cv if requested
+        if not isinstance(cv_window, type(None)):       
+            outdata = [moving_cv(i, windowsize = cv_window) for i in outdata]
+        #now apply moving average if requested
+        if not isinstance(window, type(None)):
+            outdata = [moving_average(i, windowsize = window) for i in outdata]
+        #now apply boxcar if requested
+        if not isinstance(boxcar, type(None)):
+            outdata = [boxcar_function(i, divsize = boxcar) for i in outdata]
+        #convert to series
+        for n in range(len(outdata)):
+            if not isinstance(outdata[n], pd.Series):
+                outdata[n] = pd.Series(outdata[n])
+        return outdata
  
+    @property
+    def columns(self):
+        """Get list of columns that are in all holders"""
+        outlist = []
+        for holder in self.holderlist:
+            outlist = outlist + list(holder.df.columns)
+        return list(set(outlist))
+    
     def set_of(self, attr):
         """Return all possible values of a column accounting for minimum allowed rats.
         
@@ -71,47 +127,23 @@ class DataAvgs:
         for holder in self.holderlist:
             outval = outval + holder.set_of(attr)
         return set([i for i in outval if outval.count(i) >= self.min_rats])
-
-    def cv_col(self, col, cv_window = 1001, target = None, include_sem = False):
-        """First take a moving window cv of a column for each rat then average those columns together.
-
-         Parameters
-        ----------
-        col : str
-            The name of the column you want
-        cv_window : int
-            Size of moving window for computing cv, must be odd.
-            Default is 1001.
-        target : int, optional
-            Include this if you only want values from a specific target
-        include_sem : bool
-            Wether or not to include standard error, defaults to False.
-        
-        Returns
-        -------
-        out : pd.Series
-            averaged cv columns
-        
-        """
-
-        if not isinstance(target, type(None)):
-            cols = [i.get_by_target(target, col = col) for i in self.holderlist]
-        else:
-            cols = [i[col] for i in self.holderlist]
-
-        #take cvs
-        cols = [pd.Series(moving_cv(i, windowsize = cv_window)) for i in cols]
-
-        
-        return self._average_group(cols, include_sem = include_sem)
     
-    def averaged_col(self, col, target = None, include_sem = False):
+    def averaged_col(self, col, window = None, cv_window = None, boxcar = None, target = None, include_sem = False):
         """Return a column of averaged values from all rats.
+        Includes options to apply filters to each column before averaging.
         
         Parameters
         ----------
         col : str
             The name of the column you want averaged, must be one of the columns from the DataHolder classes you instantiated with
+        window : int or None, Optional
+            size of the moving average window if you want to take a moving average, defaults to None.
+        cv_window : int or None, optional
+            Size of moving window for computing coefficient of variation, if none then does not compute CV.
+            Defaults to none.
+        boxcar : int
+            Size of boxcar if wanted.
+            Defaults to none.
         target : int, optional
             Include this if you only want values from a specific target
         include_sem : bool
@@ -126,11 +158,12 @@ class DataAvgs:
             cols = [i.get_by_target(target, col = col) for i in self.holderlist]
         else:
             cols = [i[col] for i in self.holderlist]
-        return self._average_group(cols, include_sem = include_sem)
+        return self._average_group(cols, include_sem = include_sem, window = window, cv_window=cv_window, boxcar = boxcar)
 
-    def TrialSuccess(self, error, avgwindow = 100, target = None, include_sem = False):
+    def TrialSuccess(self, error, avgwindow = 100, target = None, window = None, cv_window = None, boxcar = None, include_sem = False):
         """Returns an array with the average percentage of trials within a moving window where the trial IPI was 
         +- error % away from the target IPI. First computes this average for each rat then averages over all rats.
+        Includes options to apply filters before averaging.
         
         Parameters 
         -------
@@ -141,6 +174,14 @@ class DataAvgs:
             Default is a window of 100
         target : int, optional
             include this if you want to only take values from a particular target IPI
+        window : int or None, Optional
+            size of the moving average window if you want to take a moving average, defaults to None.
+        cv_window : int or None, optional
+            Size of moving window for computing coefficient of variation, if none then does not compute CV.
+            Defaults to none.
+        boxcar : int
+            Size of boxcar if wanted.
+            Defaults to none.
         include_sem : bool
             Wether to include standard error, defaults to False.
         
@@ -152,7 +193,7 @@ class DataAvgs:
         """
         cols = [i.TrialSuccess(error, avgwindow, target) for i in self.holderlist]
 
-        return self._average_group(cols, include_sem = include_sem)
+        return self._average_group(cols, include_sem = include_sem, window = window, cv_window=cv_window, boxcar = boxcar)
 
     def DelIPI(self, target1, target2, norm = True):
         """Returns the difference in average IPIs between two targets among the group of rats. Length will be cut based on whichever target has the least trials.

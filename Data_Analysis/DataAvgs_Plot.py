@@ -17,7 +17,9 @@ class AveragedRats:
 
     farben = ['xkcd:slate grey', 'xkcd:deep green', 'xkcd:greyish green', 'xkcd:cool grey', 'xkcd:slate grey', 'xkcd:deep green', 'xkcd:greyish green', 'xkcd:cool grey']
     colors = ['xkcd:wine red', 'xkcd:grape', 'xkcd:dark lavender', 'xkcd:blueberry', 'xkcd:ocean blue', 'xkcd:turquoise', 'xkcd:light teal', 'xkcd:sage green', 'xkcd:yellow ochre', 'xkcd:pumpkin', 'xkcd:burnt umber']
-
+    
+    #names of strings and their associated column in DataHolder, used in _str_to_col method
+    colnames = {'tap1' : 'tap_1_len', 'tap2' : 'tap_2_len', 'ipi' : 'interval'}
     
     def __init__(self, ratdata, ratname):
         """ Class for plotting the rat data. This works on a single rat group's data, or a few rat groups' data. 
@@ -84,6 +86,17 @@ class AveragedRats:
         if not isinstance(boxcar, type(None)):
             outdata = self.Boxcar(outdata, window = boxcar)
         return outdata
+
+    def _str_to_col(self, colname):
+        """Return the name of a  DataAvgs column affiliated with a particular string."""
+
+        #turn to lowercase
+        colname = colname.lower()
+
+        if colname in self.rat[0].columns:
+            return colname
+        elif colname in self.colnames:
+            return self.colnames[colname]
 
     def Moving_Average(self, data, window = 1001):
         """Return a moving average over `data`.
@@ -221,87 +234,55 @@ class AveragedRats:
         #create figure(
         fig, ax = plt.subplots()
         
-        dsets = []
-        # Graph of Tap1 vs. trials
-        if ptype.lower() == 'tap1':
+        #plot data if taps or intervals are requested
+        if ptype.lower() in ('tap1', 'tap2', 'ipi', 'interval'):
             for rat, name, c in zip(self.rat, self.names, cols):
-                if isinstance(cv_window, type(None)):
-                    ydata, sems = rat.averaged_col('tap_1_len', target = target, include_sem = True)
-                else:
-                    ydata, sems = rat.cv_col('tap_1_len', cv_window = cv_window, target = target, include_sem = True)
-                ydata = self._apply_filters(ydata, window = window, cv_window = None, boxcar = boxcar)
-                ax.plot(ydata, label = name + ' tap1', color = self.colors[c])
+                ydata, sems = rat.averaged_col(self._str_to_col(ptype), target = target, include_sem = True, window = window, cv_window = cv_window, boxcar = boxcar)
+                ax.plot(ydata, label = name + " " + ptype, color = self.colors[c])
                 #plot sem if necessary
                 if include_sem:
-                    sems = self._apply_filters(sems, window = window, cv_window = None, boxcar = boxcar)
                     xvals = range(len(ydata))
                     lower_error = [ydata[i] - sems[i] for i in xvals]
                     upper_error = [ydata[i] + sems[i] for i in xvals]
                     ax.fill_between(xvals, lower_error, upper_error, color = self.colors[c], alpha = 0.5)
-            title = f"Average Length of First Tap (Target = {target}ms)"
-            if not isinstance(cv_window, type(None)):
-                title = "Variation in " + title
-                ylabel = "Variation"
-            else:
-                ylabel = "Time (ms)"
-            xlabel = "Trial"
 
-        # Graph of Tap2 vs. trials 
-        elif ptype.lower() == 'tap2':
-            for rat, name, c in zip(self.rat, self.names, cols):
-                if isinstance(cv_window, type(None)):
-                    ydata, sems = rat.averaged_col('tap_2_len', target = target, include_sem = True)
+            # labeling for Tap1 vs. trials
+            if ptype.lower() == 'tap1':
+                title = f"Average Length of First Tap (Target = {target}ms)"
+                if not isinstance(cv_window, type(None)):
+                    title = "Variation in " + title
+                    ylabel = "Variation"
                 else:
-                    ydata, sems = rat.cv_col('tap_2_len', cv_window = cv_window, target = target, include_sem = True)
-                ydata = self._apply_filters(ydata, window = window, cv_window = None, boxcar = boxcar)
-                ax.plot(ydata, label = name + ' tap2', color = self.colors[c])
-                if include_sem:
-                    sems = self._apply_filters(sems, window = window, cv_window = None, boxcar = boxcar)
-                    xvals = range(len(ydata))
-                    lower_error = [ydata[i] - sems[i] for i in xvals]
-                    upper_error = [ydata[i] + sems[i] for i in xvals]
-                    ax.fill_between(xvals, lower_error, upper_error, color = self.colors[c], alpha = 0.5)
-            title = f"Average Length of Second Tap (Target = {target}ms)"
-            if not isinstance(cv_window, type(None)):
-                title = "Variation in " + title
-                ylabel = "Variation"
-            else:
-                ylabel = "Time (ms)"
-            xlabel = "Trial"
+                    ylabel = "Time (ms)"
+                xlabel = "Trial"
 
-        # Graph of IPI vs. trials 
-        elif ptype.lower() in ('ipi', 'interval'):
-            for rat, name, c in zip(self.rat, self.names, cols):
-                if isinstance(cv_window, type(None)):
-                    ydata, sems = rat.averaged_col('interval', target = target, include_sem = True)
+            # Labeling for Tap2 vs. trials
+            elif ptype.lower() == 'tap2':
+                title = f"Average Length of Second Tap (Target = {target}ms)"
+                if not isinstance(cv_window, type(None)):
+                    title = "Variation in " + title
+                    ylabel = "Variation"
                 else:
-                    ydata, sems = rat.cv_col('interval', cv_window = cv_window, target = target, include_sem = True)
-                ydata = self._apply_filters(ydata, window = window, cv_window = None, boxcar = boxcar)
-                ax.plot(ydata, label = name + ' IPIs', color = self.colors[c])
-                if include_sem:
-                    sems = self._apply_filters(sems, window = window, cv_window = None, boxcar = boxcar)
-                    xvals = range(len(ydata))
-                    lower_error = [ydata[i] - sems[i] for i in xvals]
-                    upper_error = [ydata[i] + sems[i] for i in xvals]
-                    ax.fill_between(xvals, lower_error, upper_error, color = self.colors[c], alpha = 0.5)
-                
-            title = f"Average Length of Interpress Interval (Target = {target}ms)"
-            if not isinstance(cv_window, type(None)):
-                title = "Variation in " + title
-                ylabel = "Variation"
-            else:
-                ylabel = "Time (ms)"
-                ax.axhline(target, label = "Target IPI")
-            xlabel = "Trial"
+                    ylabel = "Time (ms)"
+                xlabel = "Trial"
+
+            # Graph of IPI vs. trials 
+            elif ptype.lower() in ('ipi', 'interval'):
+                title = f"Average Length of Interpress Interval (Target = {target}ms)"
+                if not isinstance(cv_window, type(None)):
+                    title = "Variation in " + title
+                    ylabel = "Variation"
+                else:
+                    ylabel = "Time (ms)"
+                    ax.axhline(target, label = "Target IPI")
+                xlabel = "Trial"
 
         # Graph of Success vs. trials
         elif ptype.lower() == 'success':
             for rat, name, c in zip(self.rat, self.names, cols):
-                ydata, sems = rat.TrialSuccess(error = error, avgwindow = success_window, target = target, include_sem = True)
-                ydata = self._apply_filters(ydata, window = window, cv_window = cv_window, boxcar = boxcar)
+                ydata, sems = rat.TrialSuccess(error = error, avgwindow = success_window, target = target, include_sem = True, window = window, cv_window = cv_window, boxcar = boxcar)
                 ax.plot(ydata, label = name + ' Success', color = self.colors[c])
                 if include_sem:
-                    sems = self._apply_filters(sems, window = window, cv_window = cv_window, boxcar = boxcar)
                     xvals = range(len(ydata))
                     lower_error = [ydata[i] - sems[i] for i in xvals]
                     upper_error = [ydata[i] + sems[i] for i in xvals]
